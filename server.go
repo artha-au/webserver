@@ -10,8 +10,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Server is a wrapper around http.Server that provides a graceful shutdown and other helpful features.
-type Server struct {
+// WebServer is a wrapper around http.Server that provides a graceful shutdown and other helpful features.
+type WebServer struct {
 	cfg        Config
 	router     *mux.Router
 	server     *http.Server
@@ -20,12 +20,12 @@ type Server struct {
 	log        *slog.Logger
 }
 
-// NewServer creates a new server.
-func NewServer(cfg Config) *Server {
+// New creates a new server.
+func New(cfg Config) *WebServer {
 
 	r := mux.NewRouter()
 
-	return &Server{
+	return &WebServer{
 		cfg:    cfg,
 		router: r,
 		server: &http.Server{
@@ -38,17 +38,17 @@ func NewServer(cfg Config) *Server {
 }
 
 // SetLogger sets the logger for the server.
-func (s *Server) SetLogger(l *slog.Logger) {
+func (s *WebServer) SetLogger(l *slog.Logger) {
 	s.log = l
 }
 
 // GetLogger returns the logger for the server.
-func (s *Server) GetLogger() *slog.Logger {
+func (s *WebServer) GetLogger() *slog.Logger {
 	return s.log
 }
 
 // Stop gracefully stops the server.
-func (s *Server) Stop() error {
+func (s *WebServer) Stop() error {
 	go func() {
 		if s.stopServer != nil {
 			close(s.stopServer)
@@ -63,12 +63,12 @@ func (s *Server) Stop() error {
 }
 
 // Run the web server (blocking).
-func (s *Server) Run() error {
+func (s *WebServer) Run() error {
 	return s.listenAndServe()
 }
 
 // Start the web server asynchronously (does not block).
-func (s *Server) Start() {
+func (s *WebServer) Start() {
 	s.wg.Add(1)
 
 	go func() {
@@ -80,7 +80,7 @@ func (s *Server) Start() {
 	}()
 }
 
-func (s *Server) listenAndServe() error {
+func (s *WebServer) listenAndServe() error {
 	if s.cfg.TLS.Enabled {
 		s.log.Info(fmt.Sprintf("Listening on https://%s:%d", s.cfg.Addr, s.cfg.Port))
 		return s.server.ListenAndServeTLS(s.cfg.TLS.CertFile, s.cfg.TLS.KeyFile)
@@ -90,6 +90,6 @@ func (s *Server) listenAndServe() error {
 }
 
 // Router returns the router for the server.
-func (s *Server) Router() *mux.Router {
+func (s *WebServer) Router() *mux.Router {
 	return s.router
 }
