@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	_ "github.com/lib/pq"
+	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/artha-au/webserver/pkg/auth"
 	"github.com/artha-au/webserver/pkg/crm"
@@ -23,11 +24,16 @@ import (
 func main() {
 	// Database connection
 	dbURL := os.Getenv("DATABASE_URL")
+	var dbDriver string
 	if dbURL == "" {
-		dbURL = "postgres://user:password@localhost/crm?sslmode=disable"
+		// Use SQLite for development/testing
+		dbURL = ":memory:"
+		dbDriver = "sqlite3"
+	} else {
+		dbDriver = "postgres"
 	}
 
-	db, err := sql.Open("postgres", dbURL)
+	db, err := sql.Open(dbDriver, dbURL)
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
@@ -110,6 +116,11 @@ func main() {
 			log.Fatal("Server failed:", err)
 		}
 		return
+	}
+
+	// Initialize demo user passwords
+	if err := initializeDemoPasswords(ctx, db, integration.AuthService); err != nil {
+		log.Printf("Warning: Failed to initialize demo passwords: %v", err)
 	}
 
 	// Create API handlers
@@ -374,6 +385,57 @@ func initializeRBAC(ctx context.Context, db *sql.DB) error {
 		log.Printf("Admin role assignment might already exist: %v", err)
 	}
 
+	// Create demo users for testing
+	demoUsers := []struct {
+		user     *rbac.User
+		password string
+		roleID   string
+	}{
+		{
+			user: &rbac.User{
+				ID:        "user-leader",
+				Email:     "leader@crm.local",
+				Name:      "Team Leader",
+				Active:    true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			password: "leader123",
+			roleID:   "role-team-leader",
+		},
+		{
+			user: &rbac.User{
+				ID:        "user-member",
+				Email:     "user@crm.local",
+				Name:      "Regular User",
+				Active:    true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			password: "user123",
+			roleID:   "role-team-member",
+		},
+	}
+
+	for _, demo := range demoUsers {
+		if err := store.CreateUser(ctx, demo.user); err != nil {
+			log.Printf("Demo user %s might already exist: %v", demo.user.Email, err)
+		}
+
+		// Assign role
+		assignment := &rbac.UserRole{
+			ID:        "assignment-" + demo.user.ID,
+			UserID:    demo.user.ID,
+			RoleID:    demo.roleID,
+			GrantedBy: "system",
+			GrantedAt: time.Now(),
+		}
+
+		if err := store.AssignRole(ctx, assignment); err != nil {
+			log.Printf("Role assignment for %s might already exist: %v", demo.user.Email, err)
+		}
+	}
+
 	log.Println("RBAC initialization complete")
 	return nil
 }
@@ -465,3 +527,40 @@ func (h *APIHandlers) teamContextMiddleware(next http.Handler) http.Handler {
 
 // Define context key type to avoid collisions
 type contextKey string
+
+// initializeDemoPasswords sets passwords for demo users
+func initializeDemoPasswords(ctx context.Context, db *sql.DB, authService *auth.AuthService) error {
+	demoPasswords := map[string]string{
+		"admin@crm.local":  "admin123",
+		"leader@crm.local": "leader123",
+		"user@crm.local":   "user123",
+	}
+
+	store := auth.NewStore(db)
+
+	for email, password := range demoPasswords {
+		// Hash the password
+		hash, salt, err := authService.HashPassword(password)
+		if err != nil {
+			log.Printf("Failed to hash password for %s: %v", email, err)
+			continue
+		}
+
+		// Get user by email to get the user ID
+		user, err := store.GetUserByEmail(email)
+		if err != nil {
+			log.Printf("User %s not found, skipping password setup: %v", email, err)
+			continue
+		}
+
+		// Set the password
+		if err := store.SetUserPassword(user.ID, hash, salt); err != nil {
+			log.Printf("Failed to set password for %s: %v", email, err)
+			continue
+		}
+
+		log.Printf("Password set for demo user: %s", email)
+	}
+
+	return nil
+}

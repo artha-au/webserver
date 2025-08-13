@@ -217,7 +217,7 @@ func (a *AuthService) RevokeAllUserTokens(userID string) error {
 
 // Authentication methods
 func (a *AuthService) AuthenticateLocal(email, password string) (*rbac.User, error) {
-	user, err := a.store.GetUserByEmail(email)
+	user, passwordHash, passwordSalt, err := a.store.GetUserByEmailWithPassword(email)
 	if err != nil {
 		return nil, fmt.Errorf("authentication failed")
 	}
@@ -226,10 +226,22 @@ func (a *AuthService) AuthenticateLocal(email, password string) (*rbac.User, err
 		return nil, fmt.Errorf("account is disabled")
 	}
 
-	// For local authentication, we need password fields in the user table
-	// This would require extending the rbac.User struct or creating a separate query
-	// For now, return an error indicating local auth setup is needed
-	return nil, fmt.Errorf("local authentication not yet implemented - requires password fields")
+	// Check if user has a password set (local auth enabled)
+	if passwordHash == "" || passwordSalt == "" {
+		return nil, fmt.Errorf("local authentication not available for this user")
+	}
+
+	// Verify password
+	isValid, err := a.VerifyPassword(password, passwordHash, passwordSalt)
+	if err != nil {
+		return nil, fmt.Errorf("authentication failed")
+	}
+
+	if !isValid {
+		return nil, fmt.Errorf("invalid credentials")
+	}
+
+	return user, nil
 }
 
 func (a *AuthService) AuthenticateExternal(authProviderID, externalUserID string, attributes map[string]interface{}) (*rbac.User, error) {

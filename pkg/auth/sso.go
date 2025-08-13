@@ -171,6 +171,13 @@ func (h *SSOHandler) handleOIDCCallback(w http.ResponseWriter, r *http.Request, 
 }
 
 func (h *SSOHandler) tokenEndpoint(w http.ResponseWriter, r *http.Request) {
+	// Check if this is a JSON request with email/password (direct login)
+	contentType := r.Header.Get("Content-Type")
+	if contentType == "application/json" {
+		h.handleDirectLogin(w, r)
+		return
+	}
+
 	// OAuth2 token endpoint for client credentials or authorization code flow
 	grantType := r.FormValue("grant_type")
 
@@ -214,6 +221,50 @@ func (h *SSOHandler) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Requ
 		"refresh_token": newRefreshToken,
 		"token_type":    "Bearer",
 		"expires_in":    3600,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func (h *SSOHandler) handleDirectLogin(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if request.Email == "" || request.Password == "" {
+		http.Error(w, "Email and password are required", http.StatusBadRequest)
+		return
+	}
+
+	// Authenticate user
+	user, err := h.authService.AuthenticateLocal(request.Email, request.Password)
+	if err != nil {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	// Generate JWT token
+	token, refreshToken, err := h.authService.GenerateToken(user, nil)
+	if err != nil {
+		http.Error(w, "Token generation failed", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"accessToken":  token,
+		"refreshToken": refreshToken,
+		"user": map[string]interface{}{
+			"id":    user.ID,
+			"email": user.Email,
+			"name":  user.Name,
+		},
 	}
 
 	w.Header().Set("Content-Type", "application/json")

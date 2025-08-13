@@ -362,6 +362,26 @@ func (s *Store) GetUserByEmail(email string) (*rbac.User, error) {
 	return user, err
 }
 
+// GetUserByEmailWithPassword retrieves a user by email address including password fields
+func (s *Store) GetUserByEmailWithPassword(email string) (*rbac.User, string, string, error) {
+	query := `
+		SELECT id, email, name, active, created_at, updated_at, password_hash, password_salt
+		FROM users WHERE email = $1
+	`
+	user := &rbac.User{}
+	var passwordHash, passwordSalt sql.NullString
+
+	err := s.db.QueryRow(query, email).Scan(
+		&user.ID, &user.Email, &user.Name, &user.Active, &user.CreatedAt, &user.UpdatedAt,
+		&passwordHash, &passwordSalt)
+
+	if err != nil {
+		return nil, "", "", err
+	}
+
+	return user, passwordHash.String, passwordSalt.String, nil
+}
+
 // CreateUser creates a new user (wrapper around rbac operations)
 func (s *Store) CreateUser(user *rbac.User) error {
 	query := `
@@ -376,5 +396,12 @@ func (s *Store) CreateUser(user *rbac.User) error {
 func (s *Store) DeleteUser(userID string) error {
 	query := `DELETE FROM users WHERE id = $1`
 	_, err := s.db.Exec(query, userID)
+	return err
+}
+
+// SetUserPassword sets the password hash and salt for a user
+func (s *Store) SetUserPassword(userID, passwordHash, passwordSalt string) error {
+	query := `UPDATE users SET password_hash = $2, password_salt = $3 WHERE id = $1`
+	_, err := s.db.Exec(query, userID, passwordHash, passwordSalt)
 	return err
 }
