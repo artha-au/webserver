@@ -199,6 +199,7 @@ func main() {
 					r.Get("/{timesheetID}", api.getTimesheet)  // Get timesheet
 					r.Put("/{timesheetID}", api.updateTimesheet) // Update timesheet
 					r.Delete("/{timesheetID}", api.deleteTimesheet) // Delete timesheet
+					r.Post("/{timesheetID}/submit", api.submitTimesheet) // Submit timesheet for review
 				})
 			})
 		})

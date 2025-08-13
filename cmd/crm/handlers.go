@@ -3,136 +3,155 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"time"
+	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/artha-au/webserver/pkg/auth"
+	"github.com/artha-au/webserver/pkg/crm"
 )
 
-// Data structures for API responses
-type Team struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+// Helper functions for parsing query parameters
+
+func getLimit(r *http.Request) int {
+	limit := 50 // default
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+	return limit
 }
 
-type Member struct {
-	ID       string    `json:"id"`
-	UserID   string    `json:"user_id"`
-	TeamID   string    `json:"team_id"`
-	Role     string    `json:"role"`
-	JoinedAt time.Time `json:"joined_at"`
+func getOffset(r *http.Request) int {
+	offset := 0 // default
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+	return offset
 }
 
-type Timesheet struct {
-	ID          string    `json:"id"`
-	UserID      string    `json:"user_id"`
-	TeamID      string    `json:"team_id"`
-	Date        string    `json:"date"`
-	Hours       float64   `json:"hours"`
-	Description string    `json:"description"`
-	Status      string    `json:"status"` // "pending", "approved", "rejected"
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
 }
 
-type Roster struct {
-	ID        string    `json:"id"`
-	TeamID    string    `json:"team_id"`
-	Name      string    `json:"name"`
-	StartDate string    `json:"start_date"`
-	EndDate   string    `json:"end_date"`
-	Shifts    []Shift   `json:"shifts"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-type Shift struct {
-	ID       string `json:"id"`
-	UserID   string `json:"user_id"`
-	Date     string `json:"date"`
-	StartTime string `json:"start_time"`
-	EndTime   string `json:"end_time"`
+func writeError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
 // Admin Team Handlers
 
 func (h *APIHandlers) adminListTeams(w http.ResponseWriter, r *http.Request) {
-	// Stub: Return sample teams
-	teams := []Team{
-		{
-			ID:          "team-1",
-			Name:        "Engineering Team",
-			Description: "Product development team",
-			CreatedAt:   time.Now().Add(-30 * 24 * time.Hour),
-			UpdatedAt:   time.Now(),
-		},
-		{
-			ID:          "team-2",
-			Name:        "Sales Team",
-			Description: "Customer acquisition team",
-			CreatedAt:   time.Now().Add(-60 * 24 * time.Hour),
-			UpdatedAt:   time.Now(),
-		},
-	}
+	limit := getLimit(r)
+	offset := getOffset(r)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(teams)
-}
-
-func (h *APIHandlers) adminCreateTeam(w http.ResponseWriter, r *http.Request) {
-	var team Team
-	if err := json.NewDecoder(r.Body).Decode(&team); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	teams, total, err := h.crm.Store().ListTeams(r.Context(), limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to list teams: "+err.Error())
 		return
 	}
 
-	// Stub: Generate ID and timestamps
-	team.ID = "team-" + time.Now().Format("20060102150405")
-	team.CreatedAt = time.Now()
-	team.UpdatedAt = time.Now()
+	response := map[string]interface{}{
+		"teams":  teams,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(team)
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *APIHandlers) adminCreateTeam(w http.ResponseWriter, r *http.Request) {
+	user := auth.GetUserFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	var req crm.CreateTeamRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		return
+	}
+
+	team, err := h.crm.CreateTeamWithValidation(r.Context(), &req, user.ID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Failed to create team: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, team)
 }
 
 func (h *APIHandlers) adminGetTeam(w http.ResponseWriter, r *http.Request) {
 	teamID := chi.URLParam(r, "teamID")
-	
-	// Stub: Return sample team
-	team := Team{
-		ID:          teamID,
-		Name:        "Sample Team",
-		Description: "This is a sample team",
-		CreatedAt:   time.Now().Add(-30 * 24 * time.Hour),
-		UpdatedAt:   time.Now(),
+	if teamID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID is required")
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(team)
+	team, err := h.crm.Store().GetTeam(r.Context(), teamID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Team not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to get team: "+err.Error())
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, team)
 }
 
 func (h *APIHandlers) adminUpdateTeam(w http.ResponseWriter, r *http.Request) {
 	teamID := chi.URLParam(r, "teamID")
-	
-	var team Team
-	if err := json.NewDecoder(r.Body).Decode(&team); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if teamID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID is required")
 		return
 	}
 
-	team.ID = teamID
-	team.UpdatedAt = time.Now()
+	var req crm.UpdateTeamRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(team)
+	team, err := h.crm.Store().UpdateTeam(r.Context(), teamID, &req)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Team not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to update team: "+err.Error())
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, team)
 }
 
 func (h *APIHandlers) adminDeleteTeam(w http.ResponseWriter, r *http.Request) {
-	// Stub: Just return success
+	teamID := chi.URLParam(r, "teamID")
+	if teamID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID is required")
+		return
+	}
+
+	err := h.crm.Store().DeleteTeam(r.Context(), teamID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Team not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to delete team: "+err.Error())
+		}
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -140,83 +159,116 @@ func (h *APIHandlers) adminDeleteTeam(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandlers) adminListTeamMembers(w http.ResponseWriter, r *http.Request) {
 	teamID := chi.URLParam(r, "teamID")
-	
-	// Stub: Return sample members
-	members := []Member{
-		{
-			ID:       "member-1",
-			UserID:   "user-1",
-			TeamID:   teamID,
-			Role:     "team-leader",
-			JoinedAt: time.Now().Add(-30 * 24 * time.Hour),
-		},
-		{
-			ID:       "member-2",
-			UserID:   "user-2",
-			TeamID:   teamID,
-			Role:     "team-member",
-			JoinedAt: time.Now().Add(-20 * 24 * time.Hour),
-		},
+	if teamID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID is required")
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(members)
+	members, err := h.crm.Store().ListTeamMembers(r.Context(), teamID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to list team members: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, members)
 }
 
 func (h *APIHandlers) adminAddTeamMember(w http.ResponseWriter, r *http.Request) {
 	teamID := chi.URLParam(r, "teamID")
-	
-	var member Member
-	if err := json.NewDecoder(r.Body).Decode(&member); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if teamID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID is required")
 		return
 	}
 
-	member.ID = "member-" + time.Now().Format("20060102150405")
-	member.TeamID = teamID
-	member.JoinedAt = time.Now()
+	user := auth.GetUserFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(member)
+	var req crm.AddTeamMemberRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		return
+	}
+
+	member, err := h.crm.Store().AddTeamMember(r.Context(), teamID, &req, user.ID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Failed to add team member: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, member)
 }
 
 func (h *APIHandlers) adminGetTeamMember(w http.ResponseWriter, r *http.Request) {
 	teamID := chi.URLParam(r, "teamID")
 	memberID := chi.URLParam(r, "memberID")
-	
-	// Stub: Return sample member
-	member := Member{
-		ID:       memberID,
-		UserID:   "user-1",
-		TeamID:   teamID,
-		Role:     "team-member",
-		JoinedAt: time.Now().Add(-30 * 24 * time.Hour),
+	if teamID == "" || memberID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID and Member ID are required")
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(member)
+	member, err := h.crm.Store().GetTeamMember(r.Context(), teamID, memberID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Team member not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to get team member: "+err.Error())
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, member)
 }
 
 func (h *APIHandlers) adminUpdateTeamMember(w http.ResponseWriter, r *http.Request) {
 	teamID := chi.URLParam(r, "teamID")
 	memberID := chi.URLParam(r, "memberID")
-	
-	var member Member
-	if err := json.NewDecoder(r.Body).Decode(&member); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if teamID == "" || memberID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID and Member ID are required")
 		return
 	}
 
-	member.ID = memberID
-	member.TeamID = teamID
+	var req struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(member)
+	member, err := h.crm.Store().UpdateTeamMember(r.Context(), teamID, memberID, req.Role)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Team member not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to update team member: "+err.Error())
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, member)
 }
 
 func (h *APIHandlers) adminRemoveTeamMember(w http.ResponseWriter, r *http.Request) {
-	// Stub: Just return success
+	teamID := chi.URLParam(r, "teamID")
+	memberID := chi.URLParam(r, "memberID")
+	if teamID == "" || memberID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID and Member ID are required")
+		return
+	}
+
+	err := h.crm.Store().RemoveTeamMember(r.Context(), teamID, memberID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Team member not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to remove team member: "+err.Error())
+		}
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -225,48 +277,33 @@ func (h *APIHandlers) adminRemoveTeamMember(w http.ResponseWriter, r *http.Reque
 func (h *APIHandlers) listUserTeams(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUserFromContext(r)
 	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
 
-	// Stub: Return teams based on user
-	teams := []Team{
-		{
-			ID:          "team-1",
-			Name:        "My Team",
-			Description: "Team I belong to",
-			CreatedAt:   time.Now().Add(-30 * 24 * time.Hour),
-			UpdatedAt:   time.Now(),
-		},
+	teams, err := h.crm.Store().ListUserTeams(r.Context(), user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to list user teams: "+err.Error())
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(teams)
+	writeJSON(w, http.StatusOK, teams)
 }
 
 func (h *APIHandlers) listTeamMembers(w http.ResponseWriter, r *http.Request) {
 	teamID := r.Context().Value(contextKey("teamID")).(string)
-	
-	// Stub: Return team members
-	members := []Member{
-		{
-			ID:       "member-1",
-			UserID:   "user-1",
-			TeamID:   teamID,
-			Role:     "team-leader",
-			JoinedAt: time.Now().Add(-30 * 24 * time.Hour),
-		},
-		{
-			ID:       "member-2",
-			UserID:   "user-2",
-			TeamID:   teamID,
-			Role:     "team-member",
-			JoinedAt: time.Now().Add(-20 * 24 * time.Hour),
-		},
+	if teamID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID is required")
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(members)
+	members, err := h.crm.Store().ListTeamMembers(r.Context(), teamID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to list team members: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, members)
 }
 
 // Timesheet Handlers
@@ -274,60 +311,107 @@ func (h *APIHandlers) listTeamMembers(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandlers) listMemberTimesheets(w http.ResponseWriter, r *http.Request) {
 	teamID := r.Context().Value(contextKey("teamID")).(string)
 	memberID := chi.URLParam(r, "memberID")
-	
-	// Stub: Return member's timesheets
-	timesheets := []Timesheet{
-		{
-			ID:          "ts-1",
-			UserID:      memberID,
-			TeamID:      teamID,
-			Date:        "2024-01-15",
-			Hours:       8,
-			Description: "Regular work",
-			Status:      "pending",
-			CreatedAt:   time.Now().Add(-2 * 24 * time.Hour),
-			UpdatedAt:   time.Now(),
-		},
-		{
-			ID:          "ts-2",
-			UserID:      memberID,
-			TeamID:      teamID,
-			Date:        "2024-01-14",
-			Hours:       7.5,
-			Description: "Project work",
-			Status:      "approved",
-			CreatedAt:   time.Now().Add(-3 * 24 * time.Hour),
-			UpdatedAt:   time.Now().Add(-1 * 24 * time.Hour),
-		},
+	if teamID == "" || memberID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID and Member ID are required")
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(timesheets)
+	limit := getLimit(r)
+	offset := getOffset(r)
+
+	timesheets, total, err := h.crm.Store().ListMemberTimesheets(r.Context(), memberID, teamID, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to list member timesheets: "+err.Error())
+		return
+	}
+
+	response := map[string]interface{}{
+		"timesheets": timesheets,
+		"total":      total,
+		"limit":      limit,
+		"offset":     offset,
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *APIHandlers) approveTimesheet(w http.ResponseWriter, r *http.Request) {
 	timesheetID := chi.URLParam(r, "timesheetID")
-	
-	// Stub: Return success message
+	if timesheetID == "" {
+		writeError(w, http.StatusBadRequest, "Timesheet ID is required")
+		return
+	}
+
+	user := auth.GetUserFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	req := &crm.ReviewTimesheetRequest{
+		Status:      crm.TimesheetStatusApproved,
+		ReviewNotes: "Approved",
+	}
+
+	err := h.crm.ReviewTimesheetWithValidation(r.Context(), user.ID, timesheetID, req)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Timesheet not found")
+		} else if strings.Contains(err.Error(), "not a leader") {
+			writeError(w, http.StatusForbidden, "Only team leaders can approve timesheets")
+		} else {
+			writeError(w, http.StatusBadRequest, "Failed to approve timesheet: "+err.Error())
+		}
+		return
+	}
+
 	response := map[string]interface{}{
 		"id":      timesheetID,
 		"status":  "approved",
 		"message": "Timesheet approved successfully",
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *APIHandlers) rejectTimesheet(w http.ResponseWriter, r *http.Request) {
 	timesheetID := chi.URLParam(r, "timesheetID")
-	
+	if timesheetID == "" {
+		writeError(w, http.StatusBadRequest, "Timesheet ID is required")
+		return
+	}
+
+	user := auth.GetUserFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
 	var request struct {
 		Reason string `json:"reason"`
 	}
-	json.NewDecoder(r.Body).Decode(&request)
-	
-	// Stub: Return success message
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		return
+	}
+
+	req := &crm.ReviewTimesheetRequest{
+		Status:      crm.TimesheetStatusRejected,
+		ReviewNotes: request.Reason,
+	}
+
+	err := h.crm.ReviewTimesheetWithValidation(r.Context(), user.ID, timesheetID, req)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Timesheet not found")
+		} else if strings.Contains(err.Error(), "not a leader") {
+			writeError(w, http.StatusForbidden, "Only team leaders can reject timesheets")
+		} else {
+			writeError(w, http.StatusBadRequest, "Failed to reject timesheet: "+err.Error())
+		}
+		return
+	}
+
 	response := map[string]interface{}{
 		"id":      timesheetID,
 		"status":  "rejected",
@@ -335,247 +419,381 @@ func (h *APIHandlers) rejectTimesheet(w http.ResponseWriter, r *http.Request) {
 		"message": "Timesheet rejected",
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *APIHandlers) listMyTimesheets(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUserFromContext(r)
 	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
 	
 	teamID := r.Context().Value(contextKey("teamID")).(string)
-	
-	// Stub: Return user's own timesheets
-	timesheets := []Timesheet{
-		{
-			ID:          "ts-user-1",
-			UserID:      user.ID,
-			TeamID:      teamID,
-			Date:        "2024-01-15",
-			Hours:       8,
-			Description: "Daily standup, code review, feature development",
-			Status:      "pending",
-			CreatedAt:   time.Now().Add(-1 * 24 * time.Hour),
-			UpdatedAt:   time.Now(),
-		},
-		{
-			ID:          "ts-user-2",
-			UserID:      user.ID,
-			TeamID:      teamID,
-			Date:        "2024-01-14",
-			Hours:       7,
-			Description: "Bug fixes and testing",
-			Status:      "approved",
-			CreatedAt:   time.Now().Add(-2 * 24 * time.Hour),
-			UpdatedAt:   time.Now().Add(-1 * 24 * time.Hour),
-		},
+	if teamID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID is required")
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(timesheets)
+	limit := getLimit(r)
+	offset := getOffset(r)
+
+	timesheets, total, err := h.crm.Store().ListUserTimesheets(r.Context(), user.ID, teamID, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to list timesheets: "+err.Error())
+		return
+	}
+
+	response := map[string]interface{}{
+		"timesheets": timesheets,
+		"total":      total,
+		"limit":      limit,
+		"offset":     offset,
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *APIHandlers) createTimesheet(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUserFromContext(r)
 	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
 	
 	teamID := r.Context().Value(contextKey("teamID")).(string)
+	if teamID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID is required")
+		return
+	}
 	
-	var timesheet Timesheet
-	if err := json.NewDecoder(r.Body).Decode(&timesheet); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	var req crm.CreateTimesheetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
 		return
 	}
 
-	timesheet.ID = "ts-" + time.Now().Format("20060102150405")
-	timesheet.UserID = user.ID
-	timesheet.TeamID = teamID
-	timesheet.Status = "pending"
-	timesheet.CreatedAt = time.Now()
-	timesheet.UpdatedAt = time.Now()
+	timesheet, err := h.crm.CreateTimesheetWithValidation(r.Context(), user.ID, teamID, &req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Failed to create timesheet: "+err.Error())
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(timesheet)
+	writeJSON(w, http.StatusCreated, timesheet)
 }
 
 func (h *APIHandlers) getTimesheet(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUserFromContext(r)
 	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
 	
-	teamID := r.Context().Value(contextKey("teamID")).(string)
 	timesheetID := chi.URLParam(r, "timesheetID")
-	
-	// Stub: Return sample timesheet
-	timesheet := Timesheet{
-		ID:          timesheetID,
-		UserID:      user.ID,
-		TeamID:      teamID,
-		Date:        "2024-01-15",
-		Hours:       8,
-		Description: "Daily work",
-		Status:      "pending",
-		CreatedAt:   time.Now().Add(-1 * 24 * time.Hour),
-		UpdatedAt:   time.Now(),
+	if timesheetID == "" {
+		writeError(w, http.StatusBadRequest, "Timesheet ID is required")
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(timesheet)
+	timesheet, err := h.crm.ValidateTimesheetAccess(r.Context(), user.ID, timesheetID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Timesheet not found")
+		} else if strings.Contains(err.Error(), "cannot access") {
+			writeError(w, http.StatusForbidden, "Access denied")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to get timesheet: "+err.Error())
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, timesheet)
 }
 
 func (h *APIHandlers) updateTimesheet(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUserFromContext(r)
 	if user == nil {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
 	
-	teamID := r.Context().Value(contextKey("teamID")).(string)
 	timesheetID := chi.URLParam(r, "timesheetID")
+	if timesheetID == "" {
+		writeError(w, http.StatusBadRequest, "Timesheet ID is required")
+		return
+	}
 	
-	var timesheet Timesheet
-	if err := json.NewDecoder(r.Body).Decode(&timesheet); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	var req crm.UpdateTimesheetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
 		return
 	}
 
-	timesheet.ID = timesheetID
-	timesheet.UserID = user.ID
-	timesheet.TeamID = teamID
-	timesheet.UpdatedAt = time.Now()
+	// Validate access
+	if _, err := h.crm.ValidateTimesheetAccess(r.Context(), user.ID, timesheetID); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Timesheet not found")
+		} else if strings.Contains(err.Error(), "cannot access") {
+			writeError(w, http.StatusForbidden, "Access denied")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to access timesheet: "+err.Error())
+		}
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(timesheet)
+	timesheet, err := h.crm.Store().UpdateTimesheet(r.Context(), timesheetID, &req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Failed to update timesheet: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, timesheet)
 }
 
 func (h *APIHandlers) deleteTimesheet(w http.ResponseWriter, r *http.Request) {
-	// Stub: Just return success
+	user := auth.GetUserFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	
+	timesheetID := chi.URLParam(r, "timesheetID")
+	if timesheetID == "" {
+		writeError(w, http.StatusBadRequest, "Timesheet ID is required")
+		return
+	}
+
+	// Validate access
+	if _, err := h.crm.ValidateTimesheetAccess(r.Context(), user.ID, timesheetID); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Timesheet not found")
+		} else if strings.Contains(err.Error(), "cannot access") {
+			writeError(w, http.StatusForbidden, "Access denied")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to access timesheet: "+err.Error())
+		}
+		return
+	}
+
+	err := h.crm.Store().DeleteTimesheet(r.Context(), timesheetID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Failed to delete timesheet: "+err.Error())
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Submit timesheet for review
+func (h *APIHandlers) submitTimesheet(w http.ResponseWriter, r *http.Request) {
+	user := auth.GetUserFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	
+	timesheetID := chi.URLParam(r, "timesheetID")
+	if timesheetID == "" {
+		writeError(w, http.StatusBadRequest, "Timesheet ID is required")
+		return
+	}
+
+	err := h.crm.SubmitTimesheetWithValidation(r.Context(), user.ID, timesheetID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Timesheet not found")
+		} else if strings.Contains(err.Error(), "cannot submit") {
+			writeError(w, http.StatusForbidden, "Cannot submit this timesheet")
+		} else {
+			writeError(w, http.StatusBadRequest, "Failed to submit timesheet: "+err.Error())
+		}
+		return
+	}
+
+	response := map[string]interface{}{
+		"id":      timesheetID,
+		"status":  "submitted",
+		"message": "Timesheet submitted for review",
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 // Roster Handlers
 
 func (h *APIHandlers) listTeamRosters(w http.ResponseWriter, r *http.Request) {
 	teamID := r.Context().Value(contextKey("teamID")).(string)
-	
-	// Stub: Return team rosters
-	rosters := []Roster{
-		{
-			ID:        "roster-1",
-			TeamID:    teamID,
-			Name:      "Week 3 Roster",
-			StartDate: "2024-01-15",
-			EndDate:   "2024-01-21",
-			Shifts: []Shift{
-				{
-					ID:        "shift-1",
-					UserID:    "user-1",
-					Date:      "2024-01-15",
-					StartTime: "09:00",
-					EndTime:   "17:00",
-				},
-			},
-			CreatedAt: time.Now().Add(-7 * 24 * time.Hour),
-			UpdatedAt: time.Now(),
-		},
-		{
-			ID:        "roster-2",
-			TeamID:    teamID,
-			Name:      "Week 4 Roster",
-			StartDate: "2024-01-22",
-			EndDate:   "2024-01-28",
-			Shifts:    []Shift{},
-			CreatedAt: time.Now().Add(-3 * 24 * time.Hour),
-			UpdatedAt: time.Now(),
-		},
+	if teamID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID is required")
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(rosters)
+	limit := getLimit(r)
+	offset := getOffset(r)
+
+	rosters, total, err := h.crm.Store().ListTeamRosters(r.Context(), teamID, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to list rosters: "+err.Error())
+		return
+	}
+
+	// Note: Shifts are loaded separately when getting individual rosters
+	// to avoid N+1 query problems in list view
+
+	response := map[string]interface{}{
+		"rosters": rosters,
+		"total":   total,
+		"limit":   limit,
+		"offset":  offset,
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *APIHandlers) getRoster(w http.ResponseWriter, r *http.Request) {
-	teamID := r.Context().Value(contextKey("teamID")).(string)
 	rosterID := chi.URLParam(r, "rosterID")
-	
-	// Stub: Return sample roster
-	roster := Roster{
-		ID:        rosterID,
-		TeamID:    teamID,
-		Name:      "Sample Roster",
-		StartDate: "2024-01-15",
-		EndDate:   "2024-01-21",
-		Shifts: []Shift{
-			{
-				ID:        "shift-1",
-				UserID:    "user-1",
-				Date:      "2024-01-15",
-				StartTime: "09:00",
-				EndTime:   "17:00",
-			},
-			{
-				ID:        "shift-2",
-				UserID:    "user-2",
-				Date:      "2024-01-16",
-				StartTime: "10:00",
-				EndTime:   "18:00",
-			},
-		},
-		CreatedAt: time.Now().Add(-7 * 24 * time.Hour),
-		UpdatedAt: time.Now(),
+	if rosterID == "" {
+		writeError(w, http.StatusBadRequest, "Roster ID is required")
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(roster)
+	user := auth.GetUserFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	// Validate access
+	roster, err := h.crm.ValidateRosterAccess(r.Context(), user.ID, rosterID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Roster not found")
+		} else if strings.Contains(err.Error(), "cannot access") {
+			writeError(w, http.StatusForbidden, "Access denied")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to get roster: "+err.Error())
+		}
+		return
+	}
+
+	// Get shifts for this roster
+	shifts, err := h.crm.Store().ListRosterShifts(r.Context(), rosterID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to get roster shifts: "+err.Error())
+		return
+	}
+
+	// Create response with shifts included
+	response := map[string]interface{}{
+		"roster": roster,
+		"shifts": shifts,
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *APIHandlers) createRoster(w http.ResponseWriter, r *http.Request) {
 	teamID := r.Context().Value(contextKey("teamID")).(string)
-	
-	var roster Roster
-	if err := json.NewDecoder(r.Body).Decode(&roster); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if teamID == "" {
+		writeError(w, http.StatusBadRequest, "Team ID is required")
 		return
 	}
 
-	roster.ID = "roster-" + time.Now().Format("20060102150405")
-	roster.TeamID = teamID
-	roster.CreatedAt = time.Now()
-	roster.UpdatedAt = time.Now()
+	user := auth.GetUserFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	
+	var req crm.CreateRosterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(roster)
+	roster, err := h.crm.CreateRosterWithValidation(r.Context(), teamID, &req, user.ID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not a leader") {
+			writeError(w, http.StatusForbidden, "Only team leaders can create rosters")
+		} else {
+			writeError(w, http.StatusBadRequest, "Failed to create roster: "+err.Error())
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, roster)
 }
 
 func (h *APIHandlers) updateRoster(w http.ResponseWriter, r *http.Request) {
-	teamID := r.Context().Value(contextKey("teamID")).(string)
 	rosterID := chi.URLParam(r, "rosterID")
-	
-	var roster Roster
-	if err := json.NewDecoder(r.Body).Decode(&roster); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	if rosterID == "" {
+		writeError(w, http.StatusBadRequest, "Roster ID is required")
 		return
 	}
 
-	roster.ID = rosterID
-	roster.TeamID = teamID
-	roster.UpdatedAt = time.Now()
+	user := auth.GetUserFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	
+	// Validate access first
+	if _, err := h.crm.ValidateRosterAccess(r.Context(), user.ID, rosterID); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Roster not found")
+		} else if strings.Contains(err.Error(), "cannot access") {
+			writeError(w, http.StatusForbidden, "Access denied")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to access roster: "+err.Error())
+		}
+		return
+	}
+	
+	var req crm.UpdateRosterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(roster)
+	roster, err := h.crm.Store().UpdateRoster(r.Context(), rosterID, &req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Failed to update roster: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, roster)
 }
 
 func (h *APIHandlers) deleteRoster(w http.ResponseWriter, r *http.Request) {
-	// Stub: Just return success
+	rosterID := chi.URLParam(r, "rosterID")
+	if rosterID == "" {
+		writeError(w, http.StatusBadRequest, "Roster ID is required")
+		return
+	}
+
+	user := auth.GetUserFromContext(r)
+	if user == nil {
+		writeError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+
+	// Validate access first
+	if _, err := h.crm.ValidateRosterAccess(r.Context(), user.ID, rosterID); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeError(w, http.StatusNotFound, "Roster not found")
+		} else if strings.Contains(err.Error(), "cannot access") {
+			writeError(w, http.StatusForbidden, "Access denied")
+		} else {
+			writeError(w, http.StatusInternalServerError, "Failed to access roster: "+err.Error())
+		}
+		return
+	}
+
+	err := h.crm.Store().DeleteRoster(r.Context(), rosterID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to delete roster: "+err.Error())
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
