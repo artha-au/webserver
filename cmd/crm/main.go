@@ -15,6 +15,7 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/artha-au/webserver/pkg/auth"
+	"github.com/artha-au/webserver/pkg/crm"
 	"github.com/artha-au/webserver/pkg/rbac"
 	"github.com/artha-au/webserver/pkg/server"
 )
@@ -43,6 +44,13 @@ func main() {
 		log.Println("Note: This might be due to a database migration issue.")
 		log.Println("The server will continue to start, but some features may not work properly.")
 		log.Println("You may need to manually run database migrations or check your PostgreSQL setup.")
+	}
+
+	// Initialize CRM
+	crmService, err := initializeCRM(ctx, db)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize CRM: %v", err)
+		log.Println("The server will continue to start, but CRM features may not work properly.")
 	}
 
 	// Create server
@@ -109,6 +117,7 @@ func main() {
 		db:        db,
 		rbacStore: integration.RBACStore,
 		auth:      integration,
+		crm:       crmService,
 	}
 
 	// Setup routes
@@ -368,6 +377,18 @@ func initializeRBAC(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
+// initializeCRM initializes the CRM service
+func initializeCRM(ctx context.Context, db *sql.DB) (*crm.CRM, error) {
+	config := crm.DefaultConfig()
+	crmService, err := crm.New(db, config, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Println("CRM initialization complete")
+	return crmService, nil
+}
+
 func getEnvOrDefault(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -389,6 +410,7 @@ type APIHandlers struct {
 	db        *sql.DB
 	rbacStore rbac.Store
 	auth      *auth.Integration
+	crm       *crm.CRM
 }
 
 // Health check endpoint
