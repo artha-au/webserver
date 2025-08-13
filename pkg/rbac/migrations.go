@@ -266,17 +266,34 @@ func (m *Migrator) getCurrentVersion(ctx context.Context) (int, error) {
 }
 
 func (m *Migrator) executeMigration(ctx context.Context, tx *sql.Tx, script string) error {
-	// Split script into individual statements
-	statements := strings.Split(script, ";")
+	// For the initial schema which contains PostgreSQL functions, execute as a single block
+	// to avoid parsing issues with dollar-quoted strings
+	script = strings.TrimSpace(script)
+	if script == "" {
+		return nil
+	}
 
-	for _, stmt := range statements {
+	// Check if this script contains PostgreSQL functions
+	if strings.Contains(script, "$$") {
+		// Execute the entire script as one statement for function definitions
+		m.logger.Printf("Executing script as single block (contains functions)")
+		if _, err := tx.ExecContext(ctx, script); err != nil {
+			return fmt.Errorf("failed to execute migration script: %w", err)
+		}
+		return nil
+	}
+
+	// For regular SQL without functions, split by semicolons
+	statements := strings.Split(script, ";")
+	for i, stmt := range statements {
 		stmt = strings.TrimSpace(stmt)
 		if stmt == "" {
 			continue
 		}
 
+		m.logger.Printf("Executing statement %d: %s", i+1, stmt)
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
-			return fmt.Errorf("failed to execute statement: %w\nStatement: %s", err, stmt)
+			return fmt.Errorf("failed to execute statement %d: %w\nStatement: %s", i+1, err, stmt)
 		}
 	}
 
