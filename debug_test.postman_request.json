@@ -1,0 +1,22 @@
+{
+  "name": "Debug Auth Test",
+  "request": {
+    "method": "POST",
+    "header": [
+      {
+        "key": "Content-Type",
+        "value": "application/json"
+      }
+    ],
+    "body": {
+      "mode": "raw",
+      "raw": "{}"
+    },
+    "url": {
+      "raw": "{{baseUrl}}/debug/auth",
+      "host": ["{{baseUrl}}"],
+      "path": ["debug", "auth"]
+    }
+  },
+  "description": "Debug endpoint to test authentication functionality without complex flow"
+}

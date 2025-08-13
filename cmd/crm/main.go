@@ -29,8 +29,10 @@ func main() {
 		// Use SQLite for development/testing
 		dbURL = ":memory:"
 		dbDriver = "sqlite3"
+		log.Println("Using SQLite in-memory database")
 	} else {
 		dbDriver = "postgres"
+		log.Printf("Using PostgreSQL database: %s", dbURL)
 	}
 
 	db, err := sql.Open(dbDriver, dbURL)
@@ -119,8 +121,11 @@ func main() {
 	}
 
 	// Initialize demo user passwords
+	log.Println("Initializing demo user passwords...")
 	if err := initializeDemoPasswords(ctx, db, integration.AuthService); err != nil {
 		log.Printf("Warning: Failed to initialize demo passwords: %v", err)
+	} else {
+		log.Println("Demo passwords initialized successfully")
 	}
 
 	// Create API handlers
@@ -134,6 +139,38 @@ func main() {
 	// Setup routes
 	s.Get("/", api.healthCheck)
 	s.Get("/health", api.healthCheck)
+	
+	// Debug endpoint to test auth without complex flow
+	s.Post("/debug/auth", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		
+		// Test basic functionality
+		result := map[string]interface{}{
+			"timestamp": time.Now().Unix(),
+			"status": "ok",
+		}
+		
+		// Try to check if demo user exists
+		store := auth.NewStore(db)
+		user, err := store.GetUserByEmail("admin@crm.local")
+		if err != nil {
+			result["user_lookup_error"] = err.Error()
+		} else {
+			result["user_found"] = true
+			result["user_id"] = user.ID
+			result["user_active"] = user.Active
+		}
+		
+		// Try password lookup
+		_, hash, salt, err := store.GetUserByEmailWithPassword("admin@crm.local")
+		if err != nil {
+			result["password_lookup_error"] = err.Error()
+		} else {
+			result["has_password"] = hash != "" && salt != ""
+		}
+		
+		json.NewEncoder(w).Encode(result)
+	})
 
 	// API v1 routes
 	s.Route("/api/v1", func(r chi.Router) {
@@ -220,6 +257,8 @@ func main() {
 	log.Printf("Starting CRM server on %s", serverConfig.ListenAddr())
 	log.Println("Available endpoints:")
 	log.Println("  GET  /health                    - Health check")
+	log.Println("  POST /auth/test                 - Test auth routes")
+	log.Println("  POST /debug/auth                - Debug auth functionality")
 	log.Println("  POST /auth/token                - Get auth token")
 	log.Println("")
 	log.Println("Admin API (requires admin role):")

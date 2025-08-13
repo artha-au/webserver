@@ -1,0 +1,1545 @@
+{
+  "info": {
+    "name": "CRM API Collection",
+    "description": "Complete API collection for the CRM webserver with automatic value management using pre-request scripts and tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{authToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global pre-request script",
+          "// Log current environment variables for debugging",
+          "console.log('Current base URL:', pm.environment.get('baseUrl'));",
+          "console.log('Current auth token:', pm.environment.get('authToken') ? 'Set' : 'Not set');"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test script",
+          "// Check for common response patterns",
+          "if (pm.response.code === 401) {",
+          "    console.warn('Authentication failed - you may need to login again');",
+          "}",
+          "",
+          "// Store response time",
+          "pm.environment.set('lastResponseTime', pm.response.responseTime);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentUserId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentTeamId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentMemberId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentRosterId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currentTimesheetId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login as Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Test response status",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Parse response and store tokens",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response has access token', function () {",
+                  "    pm.expect(jsonData).to.have.property('accessToken');",
+                  "});",
+                  "",
+                  "pm.test('Response has refresh token', function () {",
+                  "    pm.expect(jsonData).to.have.property('refreshToken');",
+                  "});",
+                  "",
+                  "// Store tokens in environment variables",
+                  "if (jsonData.accessToken) {",
+                  "    pm.environment.set('authToken', jsonData.accessToken);",
+                  "    console.log('Auth token stored successfully');",
+                  "}",
+                  "",
+                  "if (jsonData.refreshToken) {",
+                  "    pm.environment.set('refreshToken', jsonData.refreshToken);",
+                  "    console.log('Refresh token stored successfully');",
+                  "}",
+                  "",
+                  "// Store user info",
+                  "if (jsonData.user && jsonData.user.id) {",
+                  "    pm.environment.set('currentUserId', jsonData.user.id);",
+                  "    pm.environment.set('currentUserEmail', jsonData.user.email);",
+                  "    pm.environment.set('currentUserName', jsonData.user.name);",
+                  "    console.log('User info stored:', jsonData.user.email);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"admin@crm.local\",\n    \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/token",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "token"]
+            },
+            "description": "Login with admin credentials to get access and refresh tokens"
+          }
+        },
+        {
+          "name": "Login as Team Leader",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Test response status",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Parse response and store tokens",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "// Store tokens in environment variables",
+                  "if (jsonData.accessToken) {",
+                  "    pm.environment.set('authToken', jsonData.accessToken);",
+                  "    console.log('Auth token stored for team leader');",
+                  "}",
+                  "",
+                  "if (jsonData.refreshToken) {",
+                  "    pm.environment.set('refreshToken', jsonData.refreshToken);",
+                  "}",
+                  "",
+                  "// Store user info",
+                  "if (jsonData.user && jsonData.user.id) {",
+                  "    pm.environment.set('currentUserId', jsonData.user.id);",
+                  "    pm.environment.set('currentUserEmail', jsonData.user.email);",
+                  "    pm.environment.set('currentUserName', jsonData.user.name);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"leader@crm.local\",\n    \"password\": \"leader123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/token",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "token"]
+            },
+            "description": "Login with team leader credentials"
+          }
+        },
+        {
+          "name": "Login as Regular User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Test response status",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Parse response and store tokens",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "// Store tokens in environment variables",
+                  "if (jsonData.accessToken) {",
+                  "    pm.environment.set('authToken', jsonData.accessToken);",
+                  "    console.log('Auth token stored for regular user');",
+                  "}",
+                  "",
+                  "if (jsonData.refreshToken) {",
+                  "    pm.environment.set('refreshToken', jsonData.refreshToken);",
+                  "}",
+                  "",
+                  "// Store user info",
+                  "if (jsonData.user && jsonData.user.id) {",
+                  "    pm.environment.set('currentUserId', jsonData.user.id);",
+                  "    pm.environment.set('currentUserEmail', jsonData.user.email);",
+                  "    pm.environment.set('currentUserName', jsonData.user.name);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"user@crm.local\",\n    \"password\": \"user123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/token",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "token"]
+            },
+            "description": "Login with regular user credentials"
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Test response status",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Parse response and update tokens",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "if (jsonData.access_token) {",
+                  "    pm.environment.set('authToken', jsonData.access_token);",
+                  "    console.log('Auth token refreshed successfully');",
+                  "}",
+                  "",
+                  "if (jsonData.refresh_token) {",
+                  "    pm.environment.set('refreshToken', jsonData.refresh_token);",
+                  "    console.log('Refresh token updated successfully');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"refresh_token\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "refresh"]
+            },
+            "description": "Refresh the access token using the refresh token"
+          }
+        },
+        {
+          "name": "Get User Info",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response has user info', function () {",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('email');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/auth/userinfo",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "userinfo"]
+            },
+            "description": "Get current user information"
+          }
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200 or 204', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 204]);",
+                  "});",
+                  "",
+                  "// Clear stored tokens",
+                  "pm.environment.unset('authToken');",
+                  "pm.environment.unset('refreshToken');",
+                  "console.log('Tokens cleared');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            },
+            "description": "Logout and invalidate tokens"
+          }
+        }
+      ],
+      "description": "Authentication endpoints for obtaining and managing access tokens"
+    },
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Service is healthy', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql('healthy');",
+                  "    pm.expect(jsonData.service).to.eql('CRM API');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Check the health status of the API"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin - Teams Management",
+      "item": [
+        {
+          "name": "List All Teams",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response has teams array', function () {",
+                  "    pm.expect(jsonData).to.have.property('teams');",
+                  "    pm.expect(jsonData.teams).to.be.an('array');",
+                  "});",
+                  "",
+                  "// Store first team ID if available",
+                  "if (jsonData.teams && jsonData.teams.length > 0) {",
+                  "    pm.environment.set('currentTeamId', jsonData.teams[0].id);",
+                  "    console.log('Stored team ID:', jsonData.teams[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/teams?limit=50&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "teams"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "List all teams in the system (admin only)"
+          }
+        },
+        {
+          "name": "Create Team",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Generate a unique team name",
+                  "const timestamp = new Date().getTime();",
+                  "pm.environment.set('newTeamName', `Team_${timestamp}`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Team created successfully', function () {",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "});",
+                  "",
+                  "// Store the created team ID",
+                  "if (jsonData.id) {",
+                  "    pm.environment.set('currentTeamId', jsonData.id);",
+                  "    pm.environment.set('createdTeamId', jsonData.id);",
+                  "    console.log('Created team ID:', jsonData.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"{{newTeamName}}\",\n    \"description\": \"Test team created via Postman\",\n    \"leader_id\": \"user-leader\",\n    \"metadata\": {\n        \"department\": \"Engineering\",\n        \"location\": \"Remote\"\n    }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/teams",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "teams"]
+            },
+            "description": "Create a new team (admin only)"
+          }
+        },
+        {
+          "name": "Get Team",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Team data retrieved', function () {",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "    pm.expect(jsonData).to.have.property('leader_id');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/teams/{{currentTeamId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "teams", "{{currentTeamId}}"]
+            },
+            "description": "Get a specific team by ID (admin only)"
+          }
+        },
+        {
+          "name": "Update Team",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Team updated successfully', function () {",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData.description).to.include('Updated');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"description\": \"Updated team description\",\n    \"active\": true,\n    \"metadata\": {\n        \"department\": \"Engineering\",\n        \"location\": \"Hybrid\",\n        \"updated_at\": \"{{$timestamp}}\"\n    }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/teams/{{currentTeamId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "teams", "{{currentTeamId}}"]
+            },
+            "description": "Update team information (admin only)"
+          }
+        },
+        {
+          "name": "Delete Team",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "// Clear the team ID after deletion",
+                  "pm.environment.unset('createdTeamId');",
+                  "console.log('Team deleted successfully');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/teams/{{createdTeamId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "teams", "{{createdTeamId}}"]
+            },
+            "description": "Delete a team (admin only)"
+          }
+        }
+      ],
+      "description": "Admin endpoints for managing teams"
+    },
+    {
+      "name": "Admin - Team Members",
+      "item": [
+        {
+          "name": "List Team Members",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response is an array', function () {",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});",
+                  "",
+                  "// Store first member ID if available",
+                  "if (jsonData.length > 0) {",
+                  "    pm.environment.set('currentMemberId', jsonData[0].id);",
+                  "    console.log('Stored member ID:', jsonData[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/teams/{{currentTeamId}}/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "teams", "{{currentTeamId}}", "members"]
+            },
+            "description": "List all members of a team (admin only)"
+          }
+        },
+        {
+          "name": "Add Team Member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Member added successfully', function () {",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('user_id');",
+                  "    pm.expect(jsonData).to.have.property('role');",
+                  "});",
+                  "",
+                  "// Store the member ID",
+                  "if (jsonData.id) {",
+                  "    pm.environment.set('currentMemberId', jsonData.id);",
+                  "    pm.environment.set('addedMemberId', jsonData.id);",
+                  "    console.log('Added member ID:', jsonData.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"user_id\": \"user-member\",\n    \"role\": \"member\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/teams/{{currentTeamId}}/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "teams", "{{currentTeamId}}", "members"]
+            },
+            "description": "Add a member to a team (admin only)"
+          }
+        },
+        {
+          "name": "Get Team Member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Member data retrieved', function () {",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('user_id');",
+                  "    pm.expect(jsonData).to.have.property('team_id');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/teams/{{currentTeamId}}/members/{{currentMemberId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "teams", "{{currentTeamId}}", "members", "{{currentMemberId}}"]
+            },
+            "description": "Get a specific team member (admin only)"
+          }
+        },
+        {
+          "name": "Update Team Member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Member role updated', function () {",
+                  "    pm.expect(jsonData).to.have.property('role');",
+                  "    pm.expect(jsonData.role).to.eql('leader');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"role\": \"leader\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/teams/{{currentTeamId}}/members/{{currentMemberId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "teams", "{{currentTeamId}}", "members", "{{currentMemberId}}"]
+            },
+            "description": "Update a team member's role (admin only)"
+          }
+        },
+        {
+          "name": "Remove Team Member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "// Clear the member ID after removal",
+                  "pm.environment.unset('addedMemberId');",
+                  "console.log('Member removed successfully');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/teams/{{currentTeamId}}/members/{{addedMemberId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "teams", "{{currentTeamId}}", "members", "{{addedMemberId}}"]
+            },
+            "description": "Remove a member from a team (admin only)"
+          }
+        }
+      ],
+      "description": "Admin endpoints for managing team members"
+    },
+    {
+      "name": "Teams - User Access",
+      "item": [
+        {
+          "name": "List My Teams",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response is an array', function () {",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});",
+                  "",
+                  "// Store first team ID for subsequent requests",
+                  "if (jsonData.length > 0) {",
+                  "    pm.environment.set('myTeamId', jsonData[0].id);",
+                  "    console.log('Stored my team ID:', jsonData[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams"]
+            },
+            "description": "List teams the current user belongs to"
+          }
+        },
+        {
+          "name": "List Team Members",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response is an array', function () {",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "members"]
+            },
+            "description": "List members of a team the user belongs to"
+          }
+        }
+      ],
+      "description": "Team endpoints accessible to regular users"
+    },
+    {
+      "name": "Rosters",
+      "item": [
+        {
+          "name": "List Team Rosters",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response has rosters array', function () {",
+                  "    pm.expect(jsonData).to.have.property('rosters');",
+                  "    pm.expect(jsonData.rosters).to.be.an('array');",
+                  "});",
+                  "",
+                  "// Store first roster ID if available",
+                  "if (jsonData.rosters && jsonData.rosters.length > 0) {",
+                  "    pm.environment.set('currentRosterId', jsonData.rosters[0].id);",
+                  "    console.log('Stored roster ID:', jsonData.rosters[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/rosters?limit=50&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "rosters"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "List rosters for a team"
+          }
+        },
+        {
+          "name": "Create Roster (Team Leader)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Set start and end dates for the roster",
+                  "const startDate = new Date();",
+                  "const endDate = new Date();",
+                  "endDate.setDate(endDate.getDate() + 7); // 1 week roster",
+                  "",
+                  "pm.environment.set('rosterStartDate', startDate.toISOString());",
+                  "pm.environment.set('rosterEndDate', endDate.toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Roster created successfully', function () {",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "    pm.expect(jsonData).to.have.property('team_id');",
+                  "});",
+                  "",
+                  "// Store the created roster ID",
+                  "if (jsonData.id) {",
+                  "    pm.environment.set('currentRosterId', jsonData.id);",
+                  "    pm.environment.set('createdRosterId', jsonData.id);",
+                  "    console.log('Created roster ID:', jsonData.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Week {{$timestamp}}\",\n    \"description\": \"Weekly roster created via Postman\",\n    \"start_date\": \"{{rosterStartDate}}\",\n    \"end_date\": \"{{rosterEndDate}}\",\n    \"metadata\": {\n        \"shift_type\": \"standard\",\n        \"location\": \"office\"\n    }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/rosters",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "rosters"]
+            },
+            "description": "Create a new roster (team leader only)"
+          }
+        },
+        {
+          "name": "Get Roster",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response has roster and shifts', function () {",
+                  "    pm.expect(jsonData).to.have.property('roster');",
+                  "    pm.expect(jsonData).to.have.property('shifts');",
+                  "    pm.expect(jsonData.shifts).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/rosters/{{currentRosterId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "rosters", "{{currentRosterId}}"]
+            },
+            "description": "Get a specific roster with its shifts"
+          }
+        },
+        {
+          "name": "Update Roster (Team Leader)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Roster updated successfully', function () {",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData.status).to.eql('published');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"published\",\n    \"description\": \"Updated roster - now published\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/rosters/{{currentRosterId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "rosters", "{{currentRosterId}}"]
+            },
+            "description": "Update a roster (team leader only)"
+          }
+        },
+        {
+          "name": "Delete Roster (Team Leader)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "// Clear the roster ID after deletion",
+                  "pm.environment.unset('createdRosterId');",
+                  "console.log('Roster deleted successfully');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/rosters/{{createdRosterId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "rosters", "{{createdRosterId}}"]
+            },
+            "description": "Delete a roster (team leader only)"
+          }
+        }
+      ],
+      "description": "Roster management endpoints"
+    },
+    {
+      "name": "Timesheets",
+      "item": [
+        {
+          "name": "List My Timesheets",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response has timesheets array', function () {",
+                  "    pm.expect(jsonData).to.have.property('timesheets');",
+                  "    pm.expect(jsonData.timesheets).to.be.an('array');",
+                  "});",
+                  "",
+                  "// Store first timesheet ID if available",
+                  "if (jsonData.timesheets && jsonData.timesheets.length > 0) {",
+                  "    pm.environment.set('currentTimesheetId', jsonData.timesheets[0].id);",
+                  "    console.log('Stored timesheet ID:', jsonData.timesheets[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/timesheets?limit=50&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "timesheets"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "List the current user's timesheets"
+          }
+        },
+        {
+          "name": "Create Timesheet",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Set today's date for the timesheet",
+                  "const today = new Date();",
+                  "pm.environment.set('timesheetDate', today.toISOString());",
+                  "",
+                  "// Generate random hours between 6 and 9",
+                  "const hours = Math.floor(Math.random() * 4) + 6;",
+                  "pm.environment.set('timesheetHours', hours);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Timesheet created successfully', function () {",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('hours');",
+                  "    pm.expect(jsonData).to.have.property('status');",
+                  "    pm.expect(jsonData.status).to.eql('draft');",
+                  "});",
+                  "",
+                  "// Store the created timesheet ID",
+                  "if (jsonData.id) {",
+                  "    pm.environment.set('currentTimesheetId', jsonData.id);",
+                  "    pm.environment.set('createdTimesheetId', jsonData.id);",
+                  "    console.log('Created timesheet ID:', jsonData.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"date\": \"{{timesheetDate}}\",\n    \"hours\": {{timesheetHours}},\n    \"description\": \"Development work - API implementation and testing\",\n    \"metadata\": {\n        \"project\": \"CRM System\",\n        \"task_type\": \"development\"\n    }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/timesheets",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "timesheets"]
+            },
+            "description": "Create a new timesheet entry"
+          }
+        },
+        {
+          "name": "Get Timesheet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Timesheet data retrieved', function () {",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('hours');",
+                  "    pm.expect(jsonData).to.have.property('status');",
+                  "    pm.expect(jsonData).to.have.property('description');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/timesheets/{{currentTimesheetId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "timesheets", "{{currentTimesheetId}}"]
+            },
+            "description": "Get a specific timesheet"
+          }
+        },
+        {
+          "name": "Update Timesheet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Timesheet updated successfully', function () {",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData.hours).to.eql(8.5);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"hours\": 8.5,\n    \"description\": \"Updated: Development work - API implementation, testing, and documentation\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/timesheets/{{currentTimesheetId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "timesheets", "{{currentTimesheetId}}"]
+            },
+            "description": "Update a timesheet (only if in draft status)"
+          }
+        },
+        {
+          "name": "Submit Timesheet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Timesheet submitted successfully', function () {",
+                  "    pm.expect(jsonData.status).to.eql('submitted');",
+                  "    pm.expect(jsonData.message).to.include('submitted for review');",
+                  "});",
+                  "",
+                  "// Store submitted timesheet ID for approval/rejection",
+                  "pm.environment.set('submittedTimesheetId', jsonData.id);",
+                  "console.log('Timesheet submitted for review');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/timesheets/{{currentTimesheetId}}/submit",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "timesheets", "{{currentTimesheetId}}", "submit"]
+            },
+            "description": "Submit a timesheet for review"
+          }
+        },
+        {
+          "name": "Delete Timesheet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "// Clear the timesheet ID after deletion",
+                  "pm.environment.unset('createdTimesheetId');",
+                  "console.log('Timesheet deleted successfully');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/timesheets/{{createdTimesheetId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "timesheets", "{{createdTimesheetId}}"]
+            },
+            "description": "Delete a timesheet (only if in draft status)"
+          }
+        }
+      ],
+      "description": "Timesheet management endpoints for users"
+    },
+    {
+      "name": "Timesheet Review (Team Leader)",
+      "item": [
+        {
+          "name": "List Member Timesheets",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Response has timesheets array', function () {",
+                  "    pm.expect(jsonData).to.have.property('timesheets');",
+                  "    pm.expect(jsonData.timesheets).to.be.an('array');",
+                  "});",
+                  "",
+                  "// Find a submitted timesheet for approval/rejection",
+                  "if (jsonData.timesheets && jsonData.timesheets.length > 0) {",
+                  "    const submittedTimesheet = jsonData.timesheets.find(t => t.status === 'submitted');",
+                  "    if (submittedTimesheet) {",
+                  "        pm.environment.set('pendingTimesheetId', submittedTimesheet.id);",
+                  "        console.log('Found pending timesheet:', submittedTimesheet.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/members/{{currentMemberId}}/timesheets?limit=50&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "members", "{{currentMemberId}}", "timesheets"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "List timesheets for a team member (team leader only)"
+          }
+        },
+        {
+          "name": "Approve Timesheet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Timesheet approved successfully', function () {",
+                  "    pm.expect(jsonData.status).to.eql('approved');",
+                  "    pm.expect(jsonData.message).to.include('approved');",
+                  "});",
+                  "",
+                  "console.log('Timesheet approved');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/members/{{currentMemberId}}/timesheets/{{pendingTimesheetId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "members", "{{currentMemberId}}", "timesheets", "{{pendingTimesheetId}}", "approve"]
+            },
+            "description": "Approve a team member's timesheet (team leader only)"
+          }
+        },
+        {
+          "name": "Reject Timesheet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const jsonData = pm.response.json();",
+                  "",
+                  "pm.test('Timesheet rejected successfully', function () {",
+                  "    pm.expect(jsonData.status).to.eql('rejected');",
+                  "    pm.expect(jsonData.reason).to.be.a('string');",
+                  "});",
+                  "",
+                  "console.log('Timesheet rejected');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"reason\": \"Please provide more details about the tasks completed\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/teams/{{myTeamId}}/members/{{currentMemberId}}/timesheets/{{pendingTimesheetId}}/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "teams", "{{myTeamId}}", "members", "{{currentMemberId}}", "timesheets", "{{pendingTimesheetId}}", "reject"]
+            },
+            "description": "Reject a team member's timesheet with a reason (team leader only)"
+          }
+        }
+      ],
+      "description": "Timesheet review endpoints for team leaders"
+    }
+  ]
+}

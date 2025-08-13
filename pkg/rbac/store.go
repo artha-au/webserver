@@ -560,11 +560,12 @@ func (s *SQLStore) GetUserRoles(ctx context.Context, userID string) ([]UserRole,
 // AttachPermissionToRole attaches a permission to a role
 func (s *SQLStore) AttachPermissionToRole(ctx context.Context, roleID, permissionID string) error {
 	query := `
-		INSERT INTO role_permissions (role_id, permission_id, created_at)
-		VALUES ($1, $2, $3)
+		INSERT INTO role_permissions (id, role_id, permission_id, created_at)
+		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (role_id, permission_id) DO NOTHING
 	`
-	_, err := s.db.ExecContext(ctx, query, roleID, permissionID, time.Now())
+	id := generateID()
+	_, err := s.db.ExecContext(ctx, query, id, roleID, permissionID, time.Now())
 	return err
 }
 

@@ -127,8 +127,17 @@ func (s *Store) CreateUserSession(session *UserSession) error {
 		INSERT INTO user_sessions (id, user_id, token, refresh_token, expires_at, created_at, last_used_at, ip_address, user_agent)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
+	
+	// Handle empty IP address - use NULL instead of empty string
+	var ipAddress interface{}
+	if session.IPAddress == "" {
+		ipAddress = nil
+	} else {
+		ipAddress = session.IPAddress
+	}
+	
 	_, err := s.db.Exec(query, session.ID, session.UserID, session.Token, session.RefreshToken,
-		session.ExpiresAt, session.CreatedAt, session.LastUsedAt, session.IPAddress, session.UserAgent)
+		session.ExpiresAt, session.CreatedAt, session.LastUsedAt, ipAddress, session.UserAgent)
 	return err
 }
 
@@ -364,18 +373,27 @@ func (s *Store) GetUserByEmail(email string) (*rbac.User, error) {
 
 // GetUserByEmailWithPassword retrieves a user by email address including password fields
 func (s *Store) GetUserByEmailWithPassword(email string) (*rbac.User, string, string, error) {
-	query := `
-		SELECT id, email, name, active, created_at, updated_at, password_hash, password_salt
+	// First get the user from users table
+	userQuery := `
+		SELECT id, email, name, active, created_at, updated_at
 		FROM users WHERE email = $1
 	`
 	user := &rbac.User{}
-	var passwordHash, passwordSalt sql.NullString
-
-	err := s.db.QueryRow(query, email).Scan(
-		&user.ID, &user.Email, &user.Name, &user.Active, &user.CreatedAt, &user.UpdatedAt,
-		&passwordHash, &passwordSalt)
+	err := s.db.QueryRow(userQuery, email).Scan(
+		&user.ID, &user.Email, &user.Name, &user.Active, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
+		return nil, "", "", err
+	}
+
+	// Then get the password from user_passwords table
+	passwordQuery := `
+		SELECT password_hash, password_salt
+		FROM user_passwords WHERE user_id = $1
+	`
+	var passwordHash, passwordSalt sql.NullString
+	err = s.db.QueryRow(passwordQuery, user.ID).Scan(&passwordHash, &passwordSalt)
+	if err != nil && err != sql.ErrNoRows {
 		return nil, "", "", err
 	}
 
@@ -401,7 +419,32 @@ func (s *Store) DeleteUser(userID string) error {
 
 // SetUserPassword sets the password hash and salt for a user
 func (s *Store) SetUserPassword(userID, passwordHash, passwordSalt string) error {
-	query := `UPDATE users SET password_hash = $2, password_salt = $3 WHERE id = $1`
-	_, err := s.db.Exec(query, userID, passwordHash, passwordSalt)
-	return err
+	// First, try to update existing record
+	updateQuery := `
+		UPDATE user_passwords 
+		SET password_hash = $2, password_salt = $3
+		WHERE user_id = $1
+	`
+	result, err := s.db.Exec(updateQuery, userID, passwordHash, passwordSalt)
+	if err != nil {
+		return err
+	}
+	
+	// Check if any rows were affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	
+	// If no rows were updated, insert a new record
+	if rowsAffected == 0 {
+		insertQuery := `
+			INSERT INTO user_passwords (user_id, password_hash, password_salt)
+			VALUES ($1, $2, $3)
+		`
+		_, err = s.db.Exec(insertQuery, userID, passwordHash, passwordSalt)
+		return err
+	}
+	
+	return nil
 }

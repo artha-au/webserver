@@ -20,30 +20,37 @@ func NewSSOHandler(authService *AuthService) *SSOHandler {
 
 // RegisterSSORoutes registers SSO endpoints with the router
 func (h *SSOHandler) RegisterSSORoutes(r chi.Router) {
-	r.Route("/auth", func(r chi.Router) {
-		// OAuth/OIDC endpoints
-		r.Get("/login/{provider}", h.initiateLogin)
-		r.Get("/callback/{provider}", h.handleCallback)
-		r.Post("/token", h.tokenEndpoint)
-		r.Post("/refresh", h.refreshToken)
-		r.Post("/logout", h.logout)
-
-		// SAML endpoints
-		r.Get("/saml/{provider}/metadata", h.samlMetadata)
-		r.Post("/saml/{provider}/acs", h.samlACS)
-		r.Get("/saml/{provider}/sso", h.samlSSO)
-
-		// User info endpoint
-		r.Get("/userinfo", h.userInfo)
-
-		// Provider management (admin endpoints)
-		r.Route("/providers", func(r chi.Router) {
-			r.Get("/", h.listProviders)
-			r.Post("/", h.createProvider)
-			r.Get("/{id}", h.getProvider)
-			r.Put("/{id}", h.updateProvider)
-			r.Delete("/{id}", h.deleteProvider)
+	// Test endpoint to verify auth routes are accessible
+	r.Get("/test", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status": "ok",
+			"message": "Auth routes are accessible",
 		})
+	})
+	
+	// OAuth/OIDC endpoints
+	r.Get("/login/{provider}", h.initiateLogin)
+	r.Get("/callback/{provider}", h.handleCallback)
+	r.Post("/token", h.tokenEndpoint)
+	r.Post("/refresh", h.refreshToken)
+	r.Post("/logout", h.logout)
+
+	// SAML endpoints
+	r.Get("/saml/{provider}/metadata", h.samlMetadata)
+	r.Post("/saml/{provider}/acs", h.samlACS)
+	r.Get("/saml/{provider}/sso", h.samlSSO)
+
+	// User info endpoint
+	r.Get("/userinfo", h.userInfo)
+
+	// Provider management (admin endpoints)
+	r.Route("/providers", func(r chi.Router) {
+		r.Get("/", h.listProviders)
+		r.Post("/", h.createProvider)
+		r.Get("/{id}", h.getProvider)
+		r.Put("/{id}", h.updateProvider)
+		r.Delete("/{id}", h.deleteProvider)
 	})
 }
 
@@ -153,7 +160,8 @@ func (h *SSOHandler) handleOIDCCallback(w http.ResponseWriter, r *http.Request, 
 	// Generate JWT token
 	token, refreshToken, err := h.authService.GenerateToken(user, nil)
 	if err != nil {
-		http.Error(w, "Token generation failed", http.StatusInternalServerError)
+		// Log the actual error for debugging
+		http.Error(w, "Token generation failed: " + err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -246,14 +254,15 @@ func (h *SSOHandler) handleDirectLogin(w http.ResponseWriter, r *http.Request) {
 	// Authenticate user
 	user, err := h.authService.AuthenticateLocal(request.Email, request.Password)
 	if err != nil {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		http.Error(w, "Invalid credentials: " + err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	// Generate JWT token
 	token, refreshToken, err := h.authService.GenerateToken(user, nil)
 	if err != nil {
-		http.Error(w, "Token generation failed", http.StatusInternalServerError)
+		// Log the actual error for debugging
+		http.Error(w, "Token generation failed: " + err.Error(), http.StatusInternalServerError)
 		return
 	}
 
