@@ -245,6 +245,7 @@ CREATE TABLE IF NOT EXISTS crm_teams (
 );
 
 -- Add trigger for updated_at
+DROP TRIGGER IF EXISTS update_crm_teams_updated_at ON crm_teams;
 CREATE TRIGGER update_crm_teams_updated_at BEFORE UPDATE ON crm_teams
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 `
@@ -299,6 +300,7 @@ CREATE TABLE IF NOT EXISTS crm_rosters (
 );
 
 -- Add trigger for updated_at
+DROP TRIGGER IF EXISTS update_crm_rosters_updated_at ON crm_rosters;
 CREATE TRIGGER update_crm_rosters_updated_at BEFORE UPDATE ON crm_rosters
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 `
@@ -329,6 +331,7 @@ CREATE TABLE IF NOT EXISTS crm_roster_shifts (
 );
 
 -- Add trigger for updated_at
+DROP TRIGGER IF EXISTS update_crm_roster_shifts_updated_at ON crm_roster_shifts;
 CREATE TRIGGER update_crm_roster_shifts_updated_at BEFORE UPDATE ON crm_roster_shifts
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 `
@@ -368,6 +371,7 @@ CREATE TABLE IF NOT EXISTS crm_timesheets (
 );
 
 -- Add trigger for updated_at
+DROP TRIGGER IF EXISTS update_crm_timesheets_updated_at ON crm_timesheets;
 CREATE TRIGGER update_crm_timesheets_updated_at BEFORE UPDATE ON crm_timesheets
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 `

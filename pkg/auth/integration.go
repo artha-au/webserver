@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"log"
 	"net/http"
 	"time"
 
@@ -145,28 +146,41 @@ func (i *Integration) createSSORouter() chi.Router {
 func (i *Integration) AuthMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Printf("[AuthMiddleware] Request to %s %s", r.Method, r.URL.Path)
+			
 			authHeader := r.Header.Get("Authorization")
+			log.Printf("[AuthMiddleware] Authorization header present: %v", authHeader != "")
+			
 			if authHeader == "" {
 				if i.config.RequireAuth {
+					log.Printf("[AuthMiddleware] Missing authorization header, RequireAuth=%v", i.config.RequireAuth)
 					http.Error(w, "Missing authorization header", http.StatusUnauthorized)
 					return
 				}
+				log.Printf("[AuthMiddleware] No auth header but RequireAuth=false, proceeding")
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			const bearerPrefix = "Bearer "
 			if len(authHeader) < len(bearerPrefix) || authHeader[:len(bearerPrefix)] != bearerPrefix {
+				log.Printf("[AuthMiddleware] Invalid authorization header format")
 				http.Error(w, "Invalid authorization header format", http.StatusUnauthorized)
 				return
 			}
 
 			token := authHeader[len(bearerPrefix):]
+			log.Printf("[AuthMiddleware] Validating token (length=%d)", len(token))
+			
 			claims, err := i.AuthService.ValidateToken(token)
 			if err != nil {
+				log.Printf("[AuthMiddleware] Token validation failed: %v", err)
 				http.Error(w, "Invalid token", http.StatusUnauthorized)
 				return
 			}
+
+			log.Printf("[AuthMiddleware] Token valid for user: ID=%s, Email=%s, Roles=%v", 
+				claims.UserID, claims.Email, claims.Roles)
 
 			// Add claims to request context
 			ctx := r.Context()
@@ -187,29 +201,38 @@ func (i *Integration) AuthMiddleware() func(http.Handler) http.Handler {
 func (i *Integration) RBACMiddleware(resource, action string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Printf("[RBACMiddleware] Checking permission: resource=%s, action=%s", resource, action)
+			
 			ctx := r.Context()
 			userID, ok := ctx.Value(contextKeyUserID).(string)
 			if !ok {
+				log.Printf("[RBACMiddleware] User ID not found in context")
 				http.Error(w, "User not authenticated", http.StatusUnauthorized)
 				return
 			}
+			log.Printf("[RBACMiddleware] User ID from context: %s", userID)
 
 			var namespaceID *string
 			if nsID, ok := ctx.Value(contextKeyNamespaceID).(string); ok {
 				namespaceID = &nsID
+				log.Printf("[RBACMiddleware] Namespace ID from context: %s", nsID)
 			}
 
 			hasPermission, err := i.RBACStore.HasPermission(ctx, userID, resource, action, namespaceID)
 			if err != nil {
+				log.Printf("[RBACMiddleware] Permission check failed: %v", err)
 				http.Error(w, "Permission check failed", http.StatusInternalServerError)
 				return
 			}
 
+			log.Printf("[RBACMiddleware] Permission check result: hasPermission=%v", hasPermission)
 			if !hasPermission {
+				log.Printf("[RBACMiddleware] Access denied for user %s to %s:%s", userID, resource, action)
 				http.Error(w, "Insufficient permissions", http.StatusForbidden)
 				return
 			}
 
+			log.Printf("[RBACMiddleware] Access granted for user %s to %s:%s", userID, resource, action)
 			next.ServeHTTP(w, r)
 		})
 	}

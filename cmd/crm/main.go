@@ -57,8 +57,8 @@ func main() {
 	// Initialize CRM
 	crmService, err := initializeCRM(ctx, db)
 	if err != nil {
-		log.Printf("Warning: Failed to initialize CRM: %v", err)
-		log.Println("The server will continue to start, but CRM features may not work properly.")
+		log.Printf("Error: Failed to initialize CRM: %v", err)
+		panic(err)
 	}
 
 	// Create server
@@ -90,29 +90,29 @@ func main() {
 		log.Printf("Warning: Failed to add auth to server: %v", err)
 		log.Println("The server will start without authentication features.")
 		log.Println("This is likely due to database migration issues.")
-		
+
 		// Create a minimal API without auth for basic health checks
 		s.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"status": "healthy",
-				"service": "CRM API",
-				"version": "1.0.0",
-				"note": "Running without authentication due to database migration issues",
+				"status":    "healthy",
+				"service":   "CRM API",
+				"version":   "1.0.0",
+				"note":      "Running without authentication due to database migration issues",
 				"timestamp": time.Now().Unix(),
 			})
 		})
 		s.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"status": "healthy",
-				"service": "CRM API",
-				"version": "1.0.0",
-				"note": "Running without authentication due to database migration issues",
+				"status":    "healthy",
+				"service":   "CRM API",
+				"version":   "1.0.0",
+				"note":      "Running without authentication due to database migration issues",
 				"timestamp": time.Now().Unix(),
 			})
 		})
-		
+
 		log.Printf("Starting CRM server on %s (minimal mode)", serverConfig.ListenAddr())
 		if err := s.ListenAndServe(); err != nil {
 			log.Fatal("Server failed:", err)
@@ -139,17 +139,17 @@ func main() {
 	// Setup routes
 	s.Get("/", api.healthCheck)
 	s.Get("/health", api.healthCheck)
-	
+
 	// Debug endpoint to test auth without complex flow
 	s.Post("/debug/auth", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		// Test basic functionality
 		result := map[string]interface{}{
 			"timestamp": time.Now().Unix(),
-			"status": "ok",
+			"status":    "ok",
 		}
-		
+
 		// Try to check if demo user exists
 		store := auth.NewStore(db)
 		user, err := store.GetUserByEmail("admin@crm.local")
@@ -160,7 +160,7 @@ func main() {
 			result["user_id"] = user.ID
 			result["user_active"] = user.Active
 		}
-		
+
 		// Try password lookup
 		_, hash, salt, err := store.GetUserByEmailWithPassword("admin@crm.local")
 		if err != nil {
@@ -168,7 +168,7 @@ func main() {
 		} else {
 			result["has_password"] = hash != "" && salt != ""
 		}
-		
+
 		json.NewEncoder(w).Encode(result)
 	})
 
@@ -188,18 +188,18 @@ func main() {
 
 			// Teams management
 			r.Route("/teams", func(r chi.Router) {
-				r.Get("/", api.adminListTeams)       // List all teams
-				r.Post("/", api.adminCreateTeam)     // Create team
-				r.Get("/{teamID}", api.adminGetTeam) // Get team
-				r.Put("/{teamID}", api.adminUpdateTeam) // Update team
+				r.Get("/", api.adminListTeams)             // List all teams
+				r.Post("/", api.adminCreateTeam)           // Create team
+				r.Get("/{teamID}", api.adminGetTeam)       // Get team
+				r.Put("/{teamID}", api.adminUpdateTeam)    // Update team
 				r.Delete("/{teamID}", api.adminDeleteTeam) // Delete team
 
 				// Team members management
 				r.Route("/{teamID}/members", func(r chi.Router) {
-					r.Get("/", api.adminListTeamMembers)          // List team members
-					r.Post("/", api.adminAddTeamMember)           // Add member to team
-					r.Get("/{memberID}", api.adminGetTeamMember)  // Get team member
-					r.Put("/{memberID}", api.adminUpdateTeamMember) // Update team member
+					r.Get("/", api.adminListTeamMembers)               // List team members
+					r.Post("/", api.adminAddTeamMember)                // Add member to team
+					r.Get("/{memberID}", api.adminGetTeamMember)       // Get team member
+					r.Put("/{memberID}", api.adminUpdateTeamMember)    // Update team member
 					r.Delete("/{memberID}", api.adminRemoveTeamMember) // Remove member from team
 				})
 			})
@@ -220,33 +220,33 @@ func main() {
 					// Team leader only: manage member timesheets
 					r.Route("/{memberID}/timesheets", func(r chi.Router) {
 						r.Use(api.requireTeamLeaderMiddleware)
-						r.Get("/", api.listMemberTimesheets)           // List member's timesheets
+						r.Get("/", api.listMemberTimesheets)                   // List member's timesheets
 						r.Post("/{timesheetID}/approve", api.approveTimesheet) // Approve timesheet
-						r.Post("/{timesheetID}/reject", api.rejectTimesheet)  // Reject timesheet
+						r.Post("/{timesheetID}/reject", api.rejectTimesheet)   // Reject timesheet
 					})
 				})
 
 				// Rosters endpoints
 				r.Route("/rosters", func(r chi.Router) {
-					r.Get("/", api.listTeamRosters)    // List rosters (all users)
+					r.Get("/", api.listTeamRosters)     // List rosters (all users)
 					r.Get("/{rosterID}", api.getRoster) // Get roster (all users)
 
 					// Team leader only: manage rosters
 					r.Group(func(r chi.Router) {
 						r.Use(api.requireTeamLeaderMiddleware)
-						r.Post("/", api.createRoster)              // Create roster
-						r.Put("/{rosterID}", api.updateRoster)     // Update roster
-						r.Delete("/{rosterID}", api.deleteRoster)  // Delete roster
+						r.Post("/", api.createRoster)             // Create roster
+						r.Put("/{rosterID}", api.updateRoster)    // Update roster
+						r.Delete("/{rosterID}", api.deleteRoster) // Delete roster
 					})
 				})
 
 				// Timesheets endpoints (user's own timesheets)
 				r.Route("/timesheets", func(r chi.Router) {
-					r.Get("/", api.listMyTimesheets)           // List user's timesheets
-					r.Post("/", api.createTimesheet)           // Create timesheet
-					r.Get("/{timesheetID}", api.getTimesheet)  // Get timesheet
-					r.Put("/{timesheetID}", api.updateTimesheet) // Update timesheet
-					r.Delete("/{timesheetID}", api.deleteTimesheet) // Delete timesheet
+					r.Get("/", api.listMyTimesheets)                     // List user's timesheets
+					r.Post("/", api.createTimesheet)                     // Create timesheet
+					r.Get("/{timesheetID}", api.getTimesheet)            // Get timesheet
+					r.Put("/{timesheetID}", api.updateTimesheet)         // Update timesheet
+					r.Delete("/{timesheetID}", api.deleteTimesheet)      // Delete timesheet
 					r.Post("/{timesheetID}/submit", api.submitTimesheet) // Submit timesheet for review
 				})
 			})
@@ -308,17 +308,17 @@ func initializeRBAC(ctx context.Context, db *sql.DB) error {
 		{ID: "perm-teams-manage", Resource: "teams", Action: "manage", Description: "Full team management"},
 		{ID: "perm-teams-read", Resource: "teams", Action: "read", Description: "View teams"},
 		{ID: "perm-teams-lead", Resource: "teams", Action: "lead", Description: "Lead team operations"},
-		
+
 		// Member permissions
 		{ID: "perm-members-manage", Resource: "members", Action: "manage", Description: "Manage team members"},
 		{ID: "perm-members-read", Resource: "members", Action: "read", Description: "View team members"},
-		
+
 		// Timesheet permissions
 		{ID: "perm-timesheets-manage", Resource: "timesheets", Action: "manage", Description: "Manage all timesheets"},
 		{ID: "perm-timesheets-approve", Resource: "timesheets", Action: "approve", Description: "Approve/reject timesheets"},
 		{ID: "perm-timesheets-create", Resource: "timesheets", Action: "create", Description: "Create own timesheets"},
 		{ID: "perm-timesheets-read", Resource: "timesheets", Action: "read", Description: "View timesheets"},
-		
+
 		// Roster permissions
 		{ID: "perm-rosters-manage", Resource: "rosters", Action: "manage", Description: "Manage rosters"},
 		{ID: "perm-rosters-read", Resource: "rosters", Action: "read", Description: "View rosters"},
@@ -331,15 +331,8 @@ func initializeRBAC(ctx context.Context, db *sql.DB) error {
 		}
 	}
 
-	// Create roles
+	// Create roles (skip super_admin as it already exists from RBAC migration)
 	roles := []rbac.Role{
-		{
-			ID:          "role-admin",
-			Name:        "Admin",
-			Description: "Full system administrator",
-			IsGlobal:    true,
-			CreatedAt:   time.Now(),
-		},
 		{
 			ID:          "role-team-leader",
 			Name:        "Team Leader",
@@ -364,7 +357,7 @@ func initializeRBAC(ctx context.Context, db *sql.DB) error {
 
 	// Assign permissions to roles
 	rolePermissions := map[string][]string{
-		"role-admin": {
+		"super_admin": {
 			"perm-teams-manage",
 			"perm-members-manage",
 			"perm-timesheets-manage",
@@ -411,12 +404,12 @@ func initializeRBAC(ctx context.Context, db *sql.DB) error {
 		log.Printf("Admin user might already exist: %v", err)
 	}
 
-	// Assign admin role to admin user
+	// Assign admin role to admin user - use admin user as granter to avoid FK issues
 	adminAssignment := &rbac.UserRole{
 		ID:        "assignment-admin",
 		UserID:    "user-admin",
-		RoleID:    "role-admin",
-		GrantedBy: "system",
+		RoleID:    "super_admin", // Use the existing super_admin role from RBAC migrations
+		GrantedBy: "user-admin", // Changed from "system" to avoid FK constraint
 		GrantedAt: time.Now(),
 	}
 
@@ -466,7 +459,7 @@ func initializeRBAC(ctx context.Context, db *sql.DB) error {
 			ID:        "assignment-" + demo.user.ID,
 			UserID:    demo.user.ID,
 			RoleID:    demo.roleID,
-			GrantedBy: "system",
+			GrantedBy: "user-admin", // Changed from "system" to avoid FK constraint
 			GrantedAt: time.Now(),
 		}
 
@@ -519,9 +512,9 @@ type APIHandlers struct {
 func (h *APIHandlers) healthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status": "healthy",
-		"service": "CRM API",
-		"version": "1.0.0",
+		"status":    "healthy",
+		"service":   "CRM API",
+		"version":   "1.0.0",
 		"timestamp": time.Now().Unix(),
 	})
 }
@@ -536,7 +529,7 @@ func (h *APIHandlers) requireTeamLeaderMiddleware(next http.Handler) http.Handle
 		}
 
 		teamID := chi.URLParam(r, "teamID")
-		
+
 		// Check if user has team leader role for this team
 		ctx := r.Context()
 		hasPermission, err := h.rbacStore.HasPermission(ctx, user.ID, "teams", "lead", &teamID)

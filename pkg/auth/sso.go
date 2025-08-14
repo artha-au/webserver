@@ -346,7 +346,7 @@ func (h *SSOHandler) userInfo(w http.ResponseWriter, r *http.Request) {
 	token := authHeader[len(bearerPrefix):]
 	claims, err := h.authService.ValidateToken(token)
 	if err != nil {
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		http.Error(w, "Invalid token: " + err.Error(), http.StatusUnauthorized)
 		return
 	}
 

@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/artha-au/webserver/pkg/auth"
 	"github.com/artha-au/webserver/pkg/crm"
+	"github.com/go-chi/chi/v5"
 )
 
 // Helper functions for parsing query parameters
@@ -428,7 +428,7 @@ func (h *APIHandlers) listMyTimesheets(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	teamID := r.Context().Value(contextKey("teamID")).(string)
 	if teamID == "" {
 		writeError(w, http.StatusBadRequest, "Team ID is required")
@@ -460,13 +460,13 @@ func (h *APIHandlers) createTimesheet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	teamID := r.Context().Value(contextKey("teamID")).(string)
 	if teamID == "" {
 		writeError(w, http.StatusBadRequest, "Team ID is required")
 		return
 	}
-	
+
 	var req crm.CreateTimesheetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
@@ -488,7 +488,7 @@ func (h *APIHandlers) getTimesheet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	timesheetID := chi.URLParam(r, "timesheetID")
 	if timesheetID == "" {
 		writeError(w, http.StatusBadRequest, "Timesheet ID is required")
@@ -516,13 +516,13 @@ func (h *APIHandlers) updateTimesheet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	timesheetID := chi.URLParam(r, "timesheetID")
 	if timesheetID == "" {
 		writeError(w, http.StatusBadRequest, "Timesheet ID is required")
 		return
 	}
-	
+
 	var req crm.UpdateTimesheetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
@@ -556,7 +556,7 @@ func (h *APIHandlers) deleteTimesheet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	timesheetID := chi.URLParam(r, "timesheetID")
 	if timesheetID == "" {
 		writeError(w, http.StatusBadRequest, "Timesheet ID is required")
@@ -591,7 +591,7 @@ func (h *APIHandlers) submitTimesheet(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	timesheetID := chi.URLParam(r, "timesheetID")
 	if timesheetID == "" {
 		writeError(w, http.StatusBadRequest, "Timesheet ID is required")
@@ -704,7 +704,7 @@ func (h *APIHandlers) createRoster(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	var req crm.CreateRosterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
@@ -736,7 +736,7 @@ func (h *APIHandlers) updateRoster(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "Authentication required")
 		return
 	}
-	
+
 	// Validate access first
 	if _, err := h.crm.ValidateRosterAccess(r.Context(), user.ID, rosterID); err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -748,7 +748,7 @@ func (h *APIHandlers) updateRoster(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	
+
 	var req crm.UpdateRosterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
